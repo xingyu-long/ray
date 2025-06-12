@@ -21,6 +21,9 @@ except ImportError:
 _canceled_threads = set()
 _canceled_threads_lock = threading.Lock()
 
+# spinner
+SPINNER_DOTS = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
 
 def extract_num_rows(result: Any) -> int:
     """Extract the number of rows from a result object.
@@ -175,8 +178,10 @@ class ProgressBar:
 
         return [ref_to_result[ref] for ref in refs]
 
-    def set_description(self, name: str) -> None:
+    def set_description(self, name: str, bar_format=None) -> None:
         name = self._truncate_name(name)
+        if bar_format is not None:
+            self._bar.set_bar_format(bar_format)
         if self._bar and name != self._desc:
             self._desc = name
             self._bar.set_description(self._desc)

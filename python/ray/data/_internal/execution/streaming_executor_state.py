@@ -186,6 +186,7 @@ class OpState:
         self.output_queue: OpBufferQueue = OpBufferQueue()
         self.op = op
         self.progress_bar = None
+        self.description_bar = None
         self.num_completed_tasks = 0
         self.inputs_done_called = False
         # Tracks whether `input_done` is called for each input op.
@@ -213,17 +214,25 @@ class OpState:
             and (is_all_to_all or verbose_progress)
         )
         self.progress_bar = ProgressBar(
-            "- " + self.op.name,
+            self.op.name,
             self.op.num_output_rows_total(),
             unit="row",
             position=index,
             enabled=progress_bar_enabled,
         )
-        num_progress_bars = 1
+        self.description_bar = ProgressBar(
+            "",
+            0,
+            unit="row",
+            position=index + 1,
+            enabled=progress_bar_enabled,
+        )
+        num_progress_bars = 2
         if is_all_to_all:
             # Initialize must be called for sub progress bars, even the
             # bars are not enabled via the DataContext.
             num_progress_bars += self.op.initialize_sub_progress_bars(index + 1)
+        # TOOD: probably fit another bar here?
         return num_progress_bars if progress_bar_enabled else 0
 
     def close_progress_bars(self):
@@ -232,6 +241,8 @@ class OpState:
             self.progress_bar.close()
             if isinstance(self.op, AllToAllOperator):
                 self.op.close_sub_progress_bars()
+        if self.description_bar:
+            self.description_bar.close()
 
     def total_enqueued_input_bundles(self) -> int:
         """Total number of input bundles currently enqueued among:
@@ -271,13 +282,31 @@ class OpState:
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
         if self.progress_bar:
-            self.progress_bar.set_description(self.summary_str(resource_manager))
+            self.progress_bar.set_description(
+                f"├─  {self.summary_str(resource_manager)}"
+            )
             self.progress_bar.refresh()
+
+        if self.description_bar:
+            # just refresh it for now
+            self.description_bar.set_description(
+                f"│   {self.stats_summary_str(resource_manager)}", bar_format="{desc}"
+            )
+            self.description_bar.refresh()
+
+    def stats_summary_str(self, resource_manager: ResourceManager) -> str:
+        desc = f"{resource_manager.get_op_usage_str(self.op)}"
+        # Actors info
+        desc += f"; {_actor_info_summary_str(self.op.get_actor_info())}"
+
+        # Queued blocks
+        desc += f"; Queued blocks: {self.total_enqueued_input_bundles()}"
+        return desc
 
     def summary_str(self, resource_manager: ResourceManager) -> str:
         # Active tasks
         active = self.op.num_active_tasks()
-        desc = f"- {self.op.name}: Tasks: {active}"
+        desc = f"{self.op.name}: Tasks: {active}"
         if (
             self.op._in_task_submission_backpressure
             or self.op._in_task_output_backpressure
@@ -290,13 +319,6 @@ class OpState:
                 # The op is backpressured from producing new outputs.
                 backpressure_types.append("outputs")
             desc += f" [backpressured:{','.join(backpressure_types)}]"
-
-        # Actors info
-        desc += f"; {_actor_info_summary_str(self.op.get_actor_info())}"
-
-        # Queued blocks
-        desc += f"; Queued blocks: {self.total_enqueued_input_bundles()}"
-        desc += f"; Resources: {resource_manager.get_op_usage_str(self.op)}"
 
         # Any additional operator specific information.
         suffix = self.op.progress_str()

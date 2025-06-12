@@ -97,10 +97,15 @@ class tqdm:
             else self.DEFAULT_FLUSH_INTERVAL_SECONDS
         )
         self._last_flush_time = 0.0
+        self._bar_format = None
 
     def set_description(self, desc):
         """Implements tqdm.tqdm.set_description."""
         self._desc = desc
+        self._dump_state()
+
+    def set_bar_format(self, bar_format):
+        self._bar_format = bar_format
         self._dump_state()
 
     def update(self, n=1):
@@ -151,6 +156,7 @@ class tqdm:
             "pid": self._pid,
             "uuid": self._uuid,
             "closed": self._closed,
+            "bar_format": self._bar_format,
         }
 
     def __iter__(self):
@@ -192,6 +198,8 @@ class _Bar:
         """Apply the updated worker progress bar state."""
         if state["desc"] != self.state["desc"]:
             self.bar.set_description(state["desc"])
+        if state["bar_format"] != self.state["bar_format"]:
+            self.bar.bar_format = state["bar_format"]
         if state["total"] != self.state["total"]:
             self.bar.total = state["total"]
             self.bar.refresh()
